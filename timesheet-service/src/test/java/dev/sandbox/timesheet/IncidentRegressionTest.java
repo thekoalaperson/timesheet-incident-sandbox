@@ -2,6 +2,8 @@ package dev.sandbox.timesheet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,9 +17,19 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
+@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:regression;DB_CLOSE_DELAY=-1")
+@Transactional
 class IncidentRegressionTest {
+  @Autowired TimesheetService service;
+  @Autowired EmployeeRepository employees;
+  @Autowired TimeEntryRepository entries;
+
   @Test
   void februaryTimesheetUsesActualMonthEndAndDoesNotFail() {
     EmployeeRepository employees = mock(EmployeeRepository.class);
@@ -39,8 +51,7 @@ class IncidentRegressionTest {
 
     TimesheetService service = new TimesheetService(employees, entries, telemetry);
 
-    Map<String, Object> report =
-        assertDoesNotThrow(() -> service.timesheet(101L, "2026-02"));
+    Map<String, Object> report = assertDoesNotThrow(() -> service.timesheet(101L, "2026-02"));
 
     @SuppressWarnings("unchecked")
     List<TimeEntry> rows = (List<TimeEntry>) report.get("entries");
@@ -49,11 +60,31 @@ class IncidentRegressionTest {
     assertThat((BigDecimal) report.get("totalHours")).isEqualByComparingTo("15");
     verify(telemetry, never())
         .incident(
-            eq("month-boundary"),
-            eq("month_boundary"),
-            anyString(),
-            any(),
-            eq("timesheet"),
-            any());
+            eq("month-boundary"), eq("month_boundary"), anyString(), any(), eq("timesheet"), any());
+  }
+
+  @Test
+  void retriedSubmissionWithSameSubmissionIdDoesNotCreateDuplicateEntry() {
+    Employee employee = employees.save(new Employee("Regression Test", "QA"));
+    String submissionId = UUID.randomUUID().toString();
+    TimeEntry input =
+        new TimeEntry(
+            employee.id,
+            LocalDate.parse("2026-01-12"),
+            new BigDecimal("8"),
+            "Retried submission",
+            submissionId);
+
+    TimeEntry first = service.save(input, null);
+    TimeEntry second = service.save(input, null);
+
+    long persisted =
+        entries.findAll().stream()
+            .filter(e -> employee.id.equals(e.employeeId) && submissionId.equals(e.submissionId))
+            .count();
+    assertEquals(1L, persisted, "Exactly one entry should exist for a retried submission");
+    assertNotNull(first.id);
+    assertNotNull(second.id);
+    assertEquals(first.id, second.id, "A retry should resolve to the already persisted entry");
   }
 }

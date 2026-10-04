@@ -42,11 +42,32 @@ public class TimesheetService {
       throw new IllegalArgumentException(
           "employeeId, date and hours between 0 and 24 are required");
     employee(input.employeeId);
-    TimeEntry result =
-        id == null
-            ? new TimeEntry(
-                input.employeeId, input.date, input.hours, input.description, input.submissionId)
-            : entry(id);
+    TimeEntry result;
+    if (id == null) {
+      if (input.submissionId != null && !input.submissionId.isBlank()) {
+        result =
+            entries.findAll().stream()
+                .filter(
+                    e ->
+                        e.employeeId.equals(input.employeeId)
+                            && input.submissionId.equals(e.submissionId))
+                .findFirst()
+                .orElseGet(
+                    () ->
+                        new TimeEntry(
+                            input.employeeId,
+                            input.date,
+                            input.hours,
+                            input.description,
+                            input.submissionId));
+      } else {
+        result =
+            new TimeEntry(
+                input.employeeId, input.date, input.hours, input.description, input.submissionId);
+      }
+    } else {
+      result = entry(id);
+    }
     result.employeeId = input.employeeId;
     result.date = input.date;
     result.hours = input.hours;
