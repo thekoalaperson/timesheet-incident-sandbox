@@ -9,6 +9,7 @@ for port in (8080, 8081):
     urllib.request.urlopen(f'http://127.0.0.1:{port}/api/health', timeout=5).close()
 for port in (8090, 8091):
     with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind(('127.0.0.1', port))
         except OSError:
