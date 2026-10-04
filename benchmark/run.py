@@ -128,12 +128,13 @@ def oracle(context, names):
             expected, actual = {}, {}
             for sheet_id, sheet in sheets.items():
                 ledger = [row for row in context['ledger'] if str(row['sheetId']) == sheet_id]
+                approval_events = [row for row in context['audit'] if row['action'] == 'timesheet.approved' and str(row['entityId']) == sheet_id]
                 if str(sheet['status']).lower() == 'approved':
                     rows = rows_for(sheetId=sheet['id'])
-                    expected[sheet_id] = {'count': 1, 'hours': sum((number(row['hours']) for row in rows), Decimal(0))}
+                    expected[sheet_id] = {'count': 1, 'hours': sum((number(row['hours']) for row in rows), Decimal(0)), 'approvalEvents': 1}
                 else:
-                    expected[sheet_id] = {'count': 0, 'hours': Decimal(0)}
-                actual[sheet_id] = {'count': len(ledger), 'hours': sum((number(row['hours']) for row in ledger), Decimal(0))}
+                    expected[sheet_id] = {'count': 0, 'hours': Decimal(0), 'approvalEvents': 0}
+                actual[sheet_id] = {'count': len(ledger), 'hours': sum((number(row['hours']) for row in ledger), Decimal(0)), 'approvalEvents': len(approval_events)}
             if not expected:
                 raise ValueError('Approval workload returned no sheets')
             results.append(check(name, expected, actual, [row['id'] for row in context['ledger']], 'Exactly one ledger posting per approved sheet, equal to its approved entry sum; drafts have no posting.'))

@@ -88,7 +88,8 @@
       "tier": 3,
       "kind": "bug",
       "invariants": [
-        "project-budget"
+        "project-budget",
+        "approval-ledger"
       ],
       "fixtureViolations": [
         "project-budget"
