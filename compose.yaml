@@ -1,0 +1,21 @@
+services:
+  timesheet-service:
+    build: ./timesheet-service
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - telemetry:/runtime
+      - timesheet-data:/app/data
+  datadog-mock:
+    build: ./datadog-mock
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      - timesheet-service
+    volumes:
+      - telemetry:/runtime:ro
+      - worklog:/activity
+volumes:
+  telemetry:
+  timesheet-data:
+  worklog:
