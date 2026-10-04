@@ -35,6 +35,9 @@ trap 'exit 143' TERM
   cd timesheet-service
   export LOG_FILE="$root_dir/runtime/service.jsonl"
   export PORT=8080
+  if command -v git >/dev/null; then
+    export SERVICE_REVISION="$(git rev-parse --verify HEAD 2>/dev/null || true)"
+  fi
   exec java -jar "$root_dir/runtime/timesheet-service.jar"
 ) >runtime/service-console.log 2>&1 &
 service_pid=$!

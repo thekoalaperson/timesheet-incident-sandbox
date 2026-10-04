@@ -14,24 +14,47 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class Telemetry extends OncePerRequestFilter {
   private final ObjectMapper mapper;
-  private final Path file =
-      Path.of(System.getenv().getOrDefault("LOG_FILE", "../runtime/service.jsonl"));
+  private final Path file;
   private final ThreadLocal<Map<String, Object>> context =
       ThreadLocal.withInitial(LinkedHashMap::new);
   private final List<Map<String, Object>> incidents = new CopyOnWriteArrayList<>();
 
-  public Telemetry(ObjectMapper mapper) {
+  public Telemetry(
+      ObjectMapper mapper,
+      @org.springframework.beans.factory.annotation.Value(
+              "${sandbox.log-file:${LOG_FILE:../runtime/service.jsonl}}")
+          String logFile) {
     this.mapper = mapper;
+    this.file = Path.of(logFile);
   }
 
   public void scenario(String id) {
     context.get().put("scenario_id", id);
   }
 
+  public Map<String, Object> capture() {
+    return new LinkedHashMap<>(context.get());
+  }
+
+  public String value(String key) {
+    Object value = context.get().get(key);
+    return value == null ? null : value.toString();
+  }
+
+  public void restore(Map<String, Object> values) {
+    context.set(new LinkedHashMap<>(values));
+  }
+
+  public void clearContext() {
+    context.remove();
+  }
+
   public synchronized void emit(
       String status, String message, Map<String, Object> extra, Throwable error) {
     var attributes = new LinkedHashMap<String, Object>(context.get());
     attributes.put("version", "1.0.0");
+    attributes.put(
+        "deployment.revision", System.getenv().getOrDefault("SERVICE_REVISION", "unknown"));
     attributes.putAll(extra);
     if (error != null) {
       var buffer = new StringWriter();
@@ -81,7 +104,7 @@ public class Telemetry extends OncePerRequestFilter {
     var attrs = new LinkedHashMap<String, Object>(details);
     attrs.put("scenario_id", scenario);
     attrs.put("error.kind", kind);
-    attrs.put("code.file", "src/main/java/dev/sandbox/timesheet/TimesheetService.java");
+    attrs.putIfAbsent("code.file", "src/main/java/dev/sandbox/timesheet/TimesheetService.java");
     attrs.put("code.function", function);
     emit(error == null ? "warn" : "error", message, attrs, error);
   }
@@ -114,6 +137,10 @@ public class Telemetry extends OncePerRequestFilter {
     ctx.put("trace_id", UUID.randomUUID().toString().replace("-", ""));
     ctx.put("http.method", request.getMethod());
     ctx.put("http.route", request.getRequestURI());
+    for (String field : List.of("run_id", "case_id", "step")) {
+      String header = request.getHeader("X-Benchmark-" + field.replace('_', '-'));
+      if (header != null && header.length() <= 128) ctx.put(field, header);
+    }
     response.setHeader("X-Request-Id", ctx.get("request_id").toString());
     response.setHeader("X-Trace-Id", ctx.get("trace_id").toString());
     long start = System.nanoTime();

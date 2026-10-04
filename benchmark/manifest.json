@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "benchmarkVersion": "2.0.0",
+  "service": "timesheet-service",
+  "defaultSeeds": [
+    7,
+    19,
+    73
+  ],
+  "cases": [
+    {
+      "id": "case-101",
+      "tier": 1,
+      "kind": "bug",
+      "invariants": [
+        "overtime"
+      ],
+      "fixtureViolations": [
+        "overtime"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 1
+    },
+    {
+      "id": "case-201",
+      "tier": 2,
+      "kind": "bug",
+      "invariants": [
+        "invoice"
+      ],
+      "fixtureViolations": [
+        "invoice"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-202",
+      "tier": 2,
+      "kind": "bug",
+      "invariants": [
+        "team-reports"
+      ],
+      "fixtureViolations": [
+        "team-reports"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-203",
+      "tier": 3,
+      "kind": "bug",
+      "invariants": [
+        "team-reports"
+      ],
+      "fixtureViolations": [
+        "team-reports"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-301",
+      "tier": 3,
+      "kind": "bug",
+      "invariants": [
+        "approval-ledger"
+      ],
+      "fixtureViolations": [
+        "approval-ledger"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-302",
+      "tier": 3,
+      "kind": "bug",
+      "invariants": [
+        "project-budget"
+      ],
+      "fixtureViolations": [
+        "project-budget"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-401",
+      "tier": 3,
+      "kind": "bug",
+      "invariants": [
+        "closed-period"
+      ],
+      "fixtureViolations": [
+        "closed-period"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-402",
+      "tier": 4,
+      "kind": "bug",
+      "invariants": [
+        "export"
+      ],
+      "fixtureViolations": [
+        "export"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-501",
+      "tier": 4,
+      "kind": "bug",
+      "invariants": [
+        "invoice",
+        "export"
+      ],
+      "fixtureViolations": [
+        "invoice",
+        "export"
+      ],
+      "acceptedDecisions": [
+        "fix-code"
+      ],
+      "minEvidenceRequests": 2
+    },
+    {
+      "id": "case-901",
+      "tier": 0,
+      "kind": "control",
+      "invariants": [
+        "dependency-retry"
+      ],
+      "fixtureViolations": [],
+      "acceptedDecisions": [
+        "investigate-external",
+        "no-action"
+      ],
+      "minEvidenceRequests": 1
+    },
+    {
+      "id": "case-902",
+      "tier": 0,
+      "kind": "control",
+      "invariants": [
+        "validation"
+      ],
+      "fixtureViolations": [],
+      "acceptedDecisions": [
+        "no-action"
+      ],
+      "minEvidenceRequests": 1
+    },
+    {
+      "id": "case-903",
+      "tier": 0,
+      "kind": "control",
+      "invariants": [
+        "healthy-workflow"
+      ],
+      "fixtureViolations": [],
+      "acceptedDecisions": [
+        "no-action"
+      ],
+      "minEvidenceRequests": 1
+    }
+  ]
+}
