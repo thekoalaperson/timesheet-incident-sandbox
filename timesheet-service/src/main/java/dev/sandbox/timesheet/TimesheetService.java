@@ -86,7 +86,7 @@ public class TimesheetService {
     employee(employeeId);
     YearMonth period = YearMonth.parse(month);
     LocalDate start = period.atDay(1);
-    LocalDate end = start.withDayOfMonth(31);
+    LocalDate end = period.atEndOfMonth();
     List<TimeEntry> rows =
         entries.findAll().stream()
             .filter(
