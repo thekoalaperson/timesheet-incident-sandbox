@@ -226,7 +226,10 @@ def execute(client, case, seed, noise, timeout):
         context = client.call('/api/benchmark/runs/' + urllib.parse.quote(run_id, safe='') + '/context')
         if context.get('runId') != run_id or context.get('caseId') != case['id']:
             raise ValueError('Context is not correlated to the requested workload')
-        end = utcnow()
+        # Bound evidence with the service clock, not the evaluator workstation.
+        # Include a small margin for final asynchronous completion log writes.
+        completed = dt.datetime.fromisoformat(run['completedAt'].replace('Z', '+00:00'))
+        end = (completed + dt.timedelta(seconds=2)).isoformat().replace('+00:00', 'Z')
         logs = client.logs(run_id, run.get('startedAt', record['startedAt']), end)
         alerts = client.call('/api/alerts?run_id=' + urllib.parse.quote(run_id, safe=''))['data']
         results = oracle(context, case['invariants'])
