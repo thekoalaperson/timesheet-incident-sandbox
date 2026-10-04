@@ -117,23 +117,23 @@ public class ApiController {
             "id",
             "monthly-total",
             "name",
-            "Decimal hours drift",
+            "Fractional hours regression",
             "description",
-            "Compare fractional hour entries with the monthly report."),
+            "Verify fractional hour entries sum exactly in the monthly report."),
         Map.of(
             "id",
             "duplicate-submission",
             "name",
-            "Submission retry",
+            "Idempotent submission replay",
             "description",
-            "Retry a submission and inspect persisted entries."),
+            "Verify identical retries return one persisted entry."),
         Map.of(
             "id",
             "month-boundary",
             "name",
-            "February report",
+            "Month-end regression",
             "description",
-            "Generate a report for a short month."),
+            "Verify a short-month report uses its actual last day."),
         Map.of(
             "id",
             "baseline",
@@ -180,6 +180,13 @@ public class ApiController {
       if (actualCount != 1) {
         status = "degraded";
         message = "Retry persisted duplicate entries";
+        telemetry.incident(
+            "duplicate-submission",
+            "duplicate_submission",
+            message,
+            null,
+            "save",
+            Map.of("employee_id", e.id, "submission_id", key, "copy_count", actualCount));
       }
     } else {
       service.save(

@@ -5,12 +5,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
+@Table(
+    name = "time_entry",
+    uniqueConstraints =
+        @UniqueConstraint(
+            name = "unique_employee_submission",
+            columnNames = {"employee_id", "submission_id"}))
 public class TimeEntry {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   public Long id;
 
-  @Column(nullable = false)
+  @Column(name = "employee_id", nullable = false)
   public Long employeeId;
 
   @Column(nullable = false)
@@ -20,6 +26,8 @@ public class TimeEntry {
   public BigDecimal hours;
 
   public String description;
+
+  @Column(name = "submission_id")
   public String submissionId;
 
   protected TimeEntry() {}

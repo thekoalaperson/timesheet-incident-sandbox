@@ -3,6 +3,7 @@ package dev.sandbox.timesheet;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -38,60 +39,51 @@ public class TimesheetService {
         || input.date == null
         || input.hours == null
         || input.hours.signum() < 0
-        || input.hours.compareTo(BigDecimal.valueOf(24)) > 0)
+        || input.hours.compareTo(BigDecimal.valueOf(24)) > 0
+        || input.hours.stripTrailingZeros().scale() > 2)
       throw new IllegalArgumentException(
-          "employeeId, date and hours between 0 and 24 are required");
+          "employeeId, date and hours between 0 and 24 with at most two decimal places are required");
     employee(input.employeeId);
-    TimeEntry result;
-    if (id == null) {
-      if (input.submissionId != null && !input.submissionId.isBlank()) {
-        result =
-            entries.findAll().stream()
-                .filter(
-                    e ->
-                        e.employeeId.equals(input.employeeId)
-                            && input.submissionId.equals(e.submissionId))
-                .findFirst()
-                .orElseGet(
-                    () ->
-                        new TimeEntry(
-                            input.employeeId,
-                            input.date,
-                            input.hours,
-                            input.description,
-                            input.submissionId));
-      } else {
-        result =
-            new TimeEntry(
-                input.employeeId, input.date, input.hours, input.description, input.submissionId);
-      }
-    } else {
-      result = entry(id);
+    String key =
+        input.submissionId == null || input.submissionId.isBlank() ? null : input.submissionId;
+    if (key != null && key.length() > 255)
+      throw new IllegalArgumentException("submissionId must contain at most 255 characters");
+    if (id == null && key != null) {
+      var existing = entries.findByEmployeeIdAndSubmissionId(input.employeeId, key);
+      if (existing.isPresent()) return retry(existing.get(), input);
     }
+    TimeEntry result =
+        id == null
+            ? new TimeEntry(input.employeeId, input.date, input.hours, input.description, key)
+            : entry(id);
     result.employeeId = input.employeeId;
     result.date = input.date;
     result.hours = input.hours;
     result.description = input.description;
-    result.submissionId = input.submissionId;
-    // Retried submissions currently follow the same insertion path as first submissions.
-    result = entries.save(result);
-    if (result.submissionId != null && !result.submissionId.isBlank()) {
-      final String key = result.submissionId;
-      final Long employeeId = result.employeeId;
-      long copies =
-          entries.findAll().stream()
-              .filter(e -> e.employeeId.equals(employeeId) && key.equals(e.submissionId))
-              .count();
-      if (copies > 1)
-        telemetry.incident(
-            "duplicate-submission",
-            "duplicate_submission",
-            "Submission retry created multiple time entries",
-            null,
-            "save",
-            Map.of("submission_id", key, "copy_count", copies, "employee_id", employeeId));
+    result.submissionId = key;
+    try {
+      return entries.saveAndFlush(result);
+    } catch (DataIntegrityViolationException error) {
+      // Repository transactions roll back failed inserts before we read the winner.
+      if (key != null) {
+        var existing = entries.findByEmployeeIdAndSubmissionId(input.employeeId, key);
+        if (existing.isPresent()) {
+          if (id == null) return retry(existing.get(), input);
+          throw new ResponseStatusException(
+              HttpStatus.CONFLICT, "Submission ID is already used by another entry", error);
+        }
+      }
+      throw error;
     }
-    return result;
+  }
+
+  private TimeEntry retry(TimeEntry existing, TimeEntry input) {
+    if (!existing.date.equals(input.date)
+        || existing.hours.compareTo(input.hours) != 0
+        || !Objects.equals(existing.description, input.description))
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "Submission ID was already used with a different payload");
+    return existing;
   }
 
   public List<TimeEntry> list(Long employeeId, String month) {
@@ -116,10 +108,7 @@ public class TimesheetService {
                         && !e.date.isBefore(start)
                         && !e.date.isAfter(end))
             .toList();
-    BigDecimal total =
-        rows.stream()
-            .map(e -> BigDecimal.valueOf(e.hours.intValue()))
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal total = rows.stream().map(e -> e.hours).reduce(BigDecimal.ZERO, BigDecimal::add);
     BigDecimal exact = rows.stream().map(e -> e.hours).reduce(BigDecimal.ZERO, BigDecimal::add);
     if (total.compareTo(exact) != 0)
       telemetry.incident(
