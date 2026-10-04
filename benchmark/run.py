@@ -101,10 +101,16 @@ def oracle(context, names):
             rows = [entry for entry in rows_for(projectId=observed['projectId'])
                     if entry['workDate'][:7] == observed['month']]
             hours = sum((number(entry['hours']) for entry in rows), Decimal(0))
-            rate = number(projects[str(observed['projectId'])]['hourlyRate'])
+            project = projects[str(observed['projectId'])]
+            rate = number(context['fixture']['hourlyRate'])
             actual = {'hours': number(observed['hours']), 'amount': number(observed['amount'])}
             results.append(check(name, {'hours': hours, 'amount': hours * rate}, actual,
                                  [row['id'] for row in rows], 'Invoices include approved work-date-month entries only, priced at the project hourly rate.'))
+            results.append(check('invoice-rate-configuration', rate, number(project['hourlyRate']), [project['id']], 'Calculating an invoice must not change the declared project rate.'))
+            if context['caseId'] in ('case-201', 'case-501'):
+                all_rows = [entry for entry in entries if str(entry['projectId']) == str(observed['projectId']) and entry['workDate'][:7] == observed['month']]
+                draft_hours = sum((number(entry['hours']) for entry in all_rows if entry.get('sheetId') is None and str(entry['status']).lower() == 'draft'), Decimal(0))
+                results.append(check('invoice-input-integrity', {'entries': 2, 'approvedHours': number(context['fixture']['approvedHours']), 'draftHours': number(context['fixture']['extraHours'])}, {'entries': len(all_rows), 'approvedHours': hours, 'draftHours': draft_hours}, [entry['id'] for entry in all_rows], 'Invoice calculation preserves the declared approved and draft inputs; deleting or silently approving pending work is not a fix.'))
         elif name == 'team-reports':
             observed = observations['teamReports']
             if len(observed) < 2:
@@ -132,6 +138,8 @@ def oracle(context, names):
                 raise ValueError('Approval workload returned no sheets')
             results.append(check(name, expected, actual, [row['id'] for row in context['ledger']], 'Exactly one ledger posting per approved sheet, equal to its approved entry sum; drafts have no posting.'))
         elif name == 'project-budget':
+            if not projects:
+                raise ValueError('Budget workload returned no projects')
             expected, actual, calculations, sources = {}, {}, {}, []
             for project_id, project in projects.items():
                 postings = [row for row in context['ledger'] if str(row['projectId']) == project_id]
@@ -141,6 +149,7 @@ def oracle(context, names):
                 actual[project_id] = Decimal(0) <= hours <= budget
                 calculations[project_id] = {'postedHours': hours, 'budgetHours': budget}
                 sources.extend(row['id'] for row in postings)
+            results.append(check('project-budget-configuration', {key: number(context['fixture']['budgetHours']) for key in projects}, {key: number(project['budgetHours']) for key, project in projects.items()}, list(projects), 'Approval must not enlarge the declared project budget to conceal overcommit.'))
             if not expected:
                 raise ValueError('Budget workload returned no projects')
             result = check(name, expected, actual, sources, 'Total approval ledger hours for each project remain within its budget, including concurrently approved distinct sheets.')
