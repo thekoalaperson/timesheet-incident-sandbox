@@ -4,6 +4,7 @@ import argparse
 import base64
 import hmac
 import http.client
+import json
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,6 +13,16 @@ HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authoriz
 
 class Gateway(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
+
+    def document(self, payload, content_type):
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(payload)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+        self.wfile.write(payload)
 
     def authorized(self):
         auth = self.headers.get('Authorization', '')
@@ -42,8 +53,20 @@ class Gateway(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def proxy(self):
+        if self.command == 'GET' and self.path == '/handoff':
+            try:
+                return self.document(Path(__file__).with_name('handoff.html').read_bytes(), 'text/html; charset=utf-8')
+            except OSError:
+                return self.reply(503, 'Handoff page unavailable\n')
         if not self.authorized():
             return self.reply(401, 'Authentication required\n', True)
+        if self.command == 'GET' and self.path == '/api/share-info':
+            try:
+                links = json.loads(Path(__file__).with_name('runtime').joinpath('shared-links.json').read_text())
+                payload = json.dumps({'monitor_url': links['monitor'], 'timesheet_url': links['timesheet'], 'repo_url': 'https://github.com/thekoalaperson/timesheet-incident-sandbox', 'service_id': 'timesheet-service', 'service_path': 'timesheet-service/'}).encode()
+                return self.document(payload, 'application/json')
+            except (OSError, ValueError, KeyError, TypeError):
+                return self.reply(503, 'Share links are not ready\n')
         try:
             parsed = urllib.parse.urlsplit(self.path)
         except ValueError:

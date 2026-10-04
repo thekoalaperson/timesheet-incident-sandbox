@@ -36,7 +36,7 @@ for spec in timesheet:8090:8080 monitor:8091:8081; do
 done
 echo 'Creating temporary share links. Browser username: demo. Password/Bearer token: runtime/share-token.'
 python3 - <<'PY'
-import os, pathlib, re, shlex, time
+import json, os, pathlib, re, shlex, time
 urls = {}
 for _ in range(60):
     for name in ('timesheet', 'monitor'):
@@ -50,6 +50,7 @@ for _ in range(60):
 else:
     raise SystemExit('Tunnel URLs not ready. Check runtime/tunnel-*.log.')
 values = {'SANDBOX_MONITOR_URL': urls['monitor'], 'SANDBOX_UI_URL': urls['timesheet'], 'SANDBOX_ACCESS_TOKEN': pathlib.Path('runtime/share-token').read_text().strip()}
+pathlib.Path('runtime/shared-links.json').write_text(json.dumps(urls, indent=2))
 fd = os.open('runtime/share.env', os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 os.chmod('runtime/share.env', 0o600)
 with os.fdopen(fd, 'w') as f:
@@ -58,6 +59,12 @@ with os.fdopen(fd, 'w') as f:
 for name, url in urls.items():
     print(f'{name}: {url}')
 print('Connection settings saved to runtime/share.env. Ctrl+C stops sharing.')
+invite = urls['monitor'] + '/handoff#' + values['SANDBOX_ACCESS_TOKEN']
+fd = os.open('runtime/handoff-link', os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+os.chmod('runtime/handoff-link', 0o600)
+with os.fdopen(fd, 'w') as f:
+    f.write(invite + '\n')
+print('Single-link collaborator invitation saved to runtime/handoff-link.')
 PY
 while true; do
   for pid in "${share_pids[@]}"; do
