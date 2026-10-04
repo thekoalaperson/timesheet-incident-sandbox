@@ -3,13 +3,31 @@
 import argparse
 import base64
 import hmac
+import hashlib
 import http.client
 import json
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie, CookieError
 from pathlib import Path
 
 HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'}
+SESSION_COOKIE = 'sandbox_session'
+SESSION_SECONDS = 8 * 60 * 60
+OPEN_PAGE = b'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening sandbox</title><body style="font:16px system-ui;max-width:640px;margin:80px auto;padding:24px"><h1>Opening your demo</h1><p id="status">Connecting with your invitation...</p><script>
+(async () => {
+  try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const token = params.get('token');
+    const target = new URL(params.get('path') || '/', location.origin);
+    if (!token || target.origin !== location.origin || !target.pathname.startsWith('/')) throw new Error('Reopen the app from your handoff invitation.');
+    const response = await fetch('/api/share-session', {method:'POST',headers:{Authorization:'Bearer '+token},cache:'no-store'});
+    if (!response.ok) throw new Error('The invitation could not open this app. Reopen the handoff link.');
+    location.replace(target.pathname + target.search + target.hash);
+  } catch (error) { document.getElementById('status').textContent = error.message; }
+})();
+</script></body></html>'''
 
 class Gateway(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -26,6 +44,16 @@ class Gateway(BaseHTTPRequestHandler):
 
     def authorized(self):
         auth = self.headers.get('Authorization', '')
+        if not auth:
+            try:
+                cookies = SimpleCookie(self.headers.get('Cookie', ''))
+                value = cookies[SESSION_COOKIE].value
+                expiry, signature = value.split('.', 1)
+                remaining = int(expiry) - int(time.time())
+                expected = hmac.new(self.server.token, ('browser-session:' + expiry).encode(), hashlib.sha256).hexdigest()
+                return 0 < remaining <= SESSION_SECONDS and hmac.compare_digest(signature, expected)
+            except (CookieError, KeyError, ValueError, TypeError):
+                return False
         scheme, _, credentials = auth.partition(' ')
         candidate = ''
         if scheme.lower() == 'bearer':
@@ -53,6 +81,8 @@ class Gateway(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def proxy(self):
+        if self.command == 'GET' and self.path == '/open':
+            return self.document(OPEN_PAGE, 'text/html; charset=utf-8')
         if self.command == 'GET' and self.path == '/handoff':
             try:
                 return self.document(Path(__file__).with_name('handoff.html').read_bytes(), 'text/html; charset=utf-8')
@@ -60,6 +90,20 @@ class Gateway(BaseHTTPRequestHandler):
                 return self.reply(503, 'Handoff page unavailable\n')
         if not self.authorized():
             return self.reply(401, 'Authentication required\n', True)
+        if self.command == 'POST' and self.path == '/api/share-session':
+            # Authorization is the entire input. Cloudflare can forward an empty
+            # HTTP/2 POST as chunked HTTP/1.1. Close after replying so unread body
+            # framing cannot be interpreted as another request.
+            expiry = str(int(time.time()) + SESSION_SECONDS)
+            signature = hmac.new(self.server.token, ('browser-session:' + expiry).encode(), hashlib.sha256).hexdigest()
+            self.send_response(204)
+            self.send_header('Set-Cookie', SESSION_COOKIE + '=' + expiry + '.' + signature + '; Path=/; Max-Age=' + str(SESSION_SECONDS) + '; Secure; HttpOnly; SameSite=Lax')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', '0')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            self.close_connection = True
+            return
         if self.command == 'GET' and self.path == '/api/share-info':
             try:
                 links = json.loads(Path(__file__).with_name('runtime').joinpath('shared-links.json').read_text())
@@ -92,9 +136,17 @@ class Gateway(BaseHTTPRequestHandler):
             body = self.rfile.read(size)
             if len(body) != size:
                 return self.reply(400, 'Incomplete request body\n')
-            blocked = HOP_HEADERS | {'authorization', 'host', 'content-length'}
+            blocked = HOP_HEADERS | {'authorization', 'host', 'content-length', 'cookie'}
             blocked.update(value.strip().lower() for value in self.headers.get('Connection', '').split(','))
             headers = {key: value for key, value in self.headers.items() if key.lower() not in blocked}
+            try:
+                cookies = SimpleCookie(self.headers.get('Cookie', ''))
+                if SESSION_COOKIE in cookies:
+                    del cookies[SESSION_COOKIE]
+                if cookies:
+                    headers['Cookie'] = '; '.join(value.OutputString() for value in cookies.values())
+            except CookieError:
+                pass
             headers['Content-Length'] = str(size)
             connection = http.client.HTTPConnection(self.server.origin.hostname, self.server.origin.port or 80, timeout=15)
             connection.request(self.command, self.path, body=body, headers=headers)
